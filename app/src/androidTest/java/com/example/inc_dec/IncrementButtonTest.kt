@@ -30,7 +30,8 @@ class IncrementButtonTest : TestCase(
                     repeat(5) {
                         click()
                     }
-                }                valueText.hasText("Count: 5")
+                }
+                valueText.hasText("Count: 5")
             }
         }    }
 }
