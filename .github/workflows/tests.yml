@@ -1,4 +1,4 @@
-name: Tests
+name: Android UI Tests
 
 on:
   pull_request:
@@ -6,22 +6,61 @@ on:
       - '*'
   push:
     branches:
-      - 'main'
+      - main
 
 jobs:
-  tests:
-    runs-on: macOS-10.15
+  android-test:
+    runs-on: macos-13
+    env:
+      GRADLE_USER_HOME: /Users/runner/.gradle
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-java@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v3
         with:
-          distribution: 'zulu'
-          java-version: '11'
-          cache: 'gradle'
-      - uses: malinskiy/action-android/install-sdk@release/0.1.3
-      - uses: malinskiy/action-android/emulator-run-cmd@release/0.1.3
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Allure CLI
+        run: brew install allure
+
+      - name: Run Android Emulator & UI Tests
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          cmd: ./gradlew connectedCheck --stacktrace
-          tag: default
-          abi: x86
-          api: 29
+          api-level: 29
+          arch: x86
+          target: default
+          profile: pixel_7_pro
+          avd-name: test
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 1500
+          disable-animations: true
+          script: |
+            echo "Waiting for emulator..."
+            adb wait-for-device
+            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
+            echo "Emulator ready, running UI tests..."
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            echo "Pull Allure results from device..."
+            adb -s emulator-5554 pull /sdcard/Documents/allure-results ./allure-results
+            adb -s emulator-5554 shell rm -rf /sdcard/Documents/allure-results
+
+      - name: Generate Allure Report
+        run: |
+          allure generate ./allure-results -o ./allure-report --clean
+
+      - name: Deploy Allure Report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./allure-report
+          publish_branch: gh-pages
+          force_orphan: true
